@@ -25,11 +25,11 @@ export async function POST(req: Request) {
       fileSize: typeof fileSize === 'number' ? fileSize : 0,
     });
 
+    const { chunksInserted, ...rest } = result;
     return NextResponse.json({
       success: true,
-      fileName: result.fileName,
-      chunks: result.chunksInserted,
-      ...result,
+      ...rest,
+      chunks: chunksInserted,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to process file';
