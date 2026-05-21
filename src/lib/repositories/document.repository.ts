@@ -1,9 +1,9 @@
 // src/lib/repositories/document.repository.ts
-import { supabaseAdmin } from '@/lib/config/supabase';
+import { getSupabaseAdmin } from '@/lib/config/supabase';
 import { DocumentMetadata } from '@/lib/types';
 
 export async function matchDocuments(embedding: number[], threshold: number, count: number) {
-  const { data, error } = await supabaseAdmin.rpc('match_documents', {
+  const { data, error } = await getSupabaseAdmin().rpc('match_documents', {
     query_embedding: JSON.stringify(embedding),
     match_threshold: threshold,
     match_count: count,
@@ -12,7 +12,7 @@ export async function matchDocuments(embedding: number[], threshold: number, cou
 }
 
 export async function insertChunk(content: string, metadata: DocumentMetadata, embedding: number[]) {
-  const { error } = await supabaseAdmin.from('documents').insert({
+  const { error } = await getSupabaseAdmin().from('documents').insert({
     content,
     metadata,
     embedding: JSON.stringify(embedding),
@@ -33,7 +33,7 @@ function documentIdOrFilter(documentId: string) {
 }
 
 export async function getChunksByDocumentId(documentId: string) {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await getSupabaseAdmin()
     .from('documents')
     .select('*')
     .or(documentIdOrFilter(documentId));
@@ -41,11 +41,11 @@ export async function getChunksByDocumentId(documentId: string) {
 }
 
 export async function listAllDocuments() {
-  const { data, error } = await supabaseAdmin.from('documents').select('metadata');
+  const { data, error } = await getSupabaseAdmin().from('documents').select('metadata');
   return { data, error };
 }
 
 export async function deleteByDocumentId(documentId: string) {
-  const { error } = await supabaseAdmin.from('documents').delete().or(documentIdOrFilter(documentId));
+  const { error } = await getSupabaseAdmin().from('documents').delete().or(documentIdOrFilter(documentId));
   return { error };
 }

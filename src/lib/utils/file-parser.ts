@@ -11,11 +11,10 @@ export function safeDecodeURIComponent(str: string): string {
   }
 }
 
-export async function extractTextFromFile(file: File): Promise<string> {
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const fileName = file.name.toLowerCase();
+export async function extractTextFromBuffer(buffer: Buffer, fileName: string): Promise<string> {
+  const lowerName = fileName.toLowerCase();
 
-  if (fileName.endsWith('.pdf')) {
+  if (lowerName.endsWith('.pdf')) {
     const PDFParser = (await import('pdf2json')).default;
     return new Promise((resolve, reject) => {
       const pdfParser = new (PDFParser as any)(null, true);
@@ -39,13 +38,18 @@ export async function extractTextFromFile(file: File): Promise<string> {
       });
       pdfParser.parseBuffer(buffer);
     });
-  } else if (fileName.endsWith('.docx')) {
+  } else if (lowerName.endsWith('.docx')) {
     const mammoth = (await import('mammoth')).default;
     const result = await mammoth.extractRawText({ buffer });
     return result.value;
-  } else if (fileName.endsWith('.txt')) {
+  } else if (lowerName.endsWith('.txt')) {
     return buffer.toString('utf-8');
   } else {
     throw new Error('Unsupported file type. Please upload PDF, DOCX, or TXT files.');
   }
+}
+
+export async function extractTextFromFile(file: File): Promise<string> {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  return extractTextFromBuffer(buffer, file.name);
 }
