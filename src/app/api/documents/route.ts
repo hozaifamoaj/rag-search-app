@@ -100,13 +100,10 @@ export async function DELETE(req: Request) {
     if (!docResult || !docResult.metadata) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
-    const filePath = docResult.metadata.file_path;
-    // Delete storage file if a path exists.
-    if (filePath) {
-      await deleteFile(filePath);
-    }
-    // Delete the document record using the service (which also accepts a file‑deletion callback).
-    await deleteDocument(id, deleteFile);
+    await deleteDocument(id, async (filePath) => {
+      const { error } = await deleteFile(filePath);
+      if (error) throw new Error(error.message);
+    });
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
