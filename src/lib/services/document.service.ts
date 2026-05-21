@@ -54,7 +54,7 @@ export async function listDocuments(): Promise<DocumentSummary[]> {
     const id = resolveDocumentId(parsed);
     if (!id || docsMap.has(id)) return;
 
-    docsMap.set(id, { ...(parsed as DocumentMetadata), id });
+    docsMap.set(id, { ...(parsed as unknown as DocumentMetadata), id });
   });
   return Array.from(docsMap.values());
 }
@@ -66,7 +66,7 @@ export async function getDocument(id: string): Promise<{ metadata: DocumentMetad
   if (!data || data.length === 0) throw new Error('Document not found');
   const chunks = data as any[];
   const rawMeta = chunks[0].metadata as DocumentMetadata;
-  const resolvedId = resolveDocumentId(rawMeta as Record<string, unknown>) ?? id;
+  const resolvedId = resolveDocumentId(rawMeta as unknown as Record<string, unknown>) ?? id;
   const metadata: DocumentMetadata = { ...rawMeta, id: resolvedId };
   const fullText = chunks.map((c) => c.content).join('\n\n');
   return { metadata, fullText };
