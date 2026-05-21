@@ -1,118 +1,116 @@
-import {createClient} from '@supabase/supabase-js';
-import {NextResponse} from 'next/server';
+// src/app/api/documents/route.ts
+import { NextResponse } from 'next/server';
+import { Buffer } from 'buffer';
+import { listDocuments, getDocument, deleteDocument } from '@/lib/services/document.service';
+import { downloadFile, getPublicUrl, deleteFile } from '@/lib/repositories/storage.repository';
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || anonKey;
-const supabase = createClient(url, anonKey);
-const supabaseStorage = createClient(url, serviceKey);
+/** Helper to stream a file buffer */
+async function streamFile(buffer: Buffer, mime: string, disposition: string) {
+  return new NextResponse(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': mime,
+      'Content-Disposition': disposition,
+      'Content-Length': buffer.length.toString(),
+    },
+  });
+}
 
 export async function GET(req: Request) {
-    try {
-        const reqUrl = new URL(req.url);
-        const id = reqUrl.searchParams.get('id');
-        const file = reqUrl.searchParams.get('file') === 'true';
-        const view = reqUrl.searchParams.get('view') === 'true';
+  try {
+    const url = new URL(req.url);
+    const id = url.searchParams.get('id') || url.searchParams.get('document_id');
+    const file = url.searchParams.get('file') === 'true';
+    const view = url.searchParams.get('view') === 'true';
 
-        // File download/view
-        if (id && file) {
-            const {data: documents} = await supabase
-                .from('documents')
-                .select('metadata')
-                .eq('metadata->>document_id', id)
-                .limit(1);
+    // Serve file download / preview
+    if (id && file) {
+      if (!id) {
+        return NextResponse.json({ error: 'Document ID required for file download' }, { status: 400 });
+      }
+      // Retrieve metadata to know file path and type
+      const { metadata } = await getDocument(id);
+      if (!metadata) {
+        return NextResponse.json({ error: 'Document metadata not found' }, { status: 404 });
+      }
+      const filePath = metadata.file_path || `${id}.${metadata.file_name?.split('.').pop() || 'pdf'}`;
+      const mime = metadata.file_type || 'application/octet-stream';
+      const publicUrl = getPublicUrl(filePath);
 
-            if (!documents || documents.length === 0) {
-                return NextResponse.json({error: 'Document not found'}, {status: 404});
-            }
-
-            const meta = documents[0].metadata;
-            const fileName = meta?.file_name || 'document';
-            const fileType = meta?.file_type || 'application/octet-stream';
-            const filePath = meta?.file_path || `${id}.${fileName.split('.').pop() || 'pdf'}`;
-            const {
-                data: fileData,
-                error: downloadError
-            } = await supabaseStorage.storage.from('documents').download(filePath);
-            if (downloadError || !fileData) return NextResponse.json({error: downloadError?.message || 'File not stored'}, {status: 404});
-            const buffer = Buffer.from(await fileData.arrayBuffer());
-            if (buffer.length === 0) return NextResponse.json({error: 'File is empty'}, {status: 500});
-            const isPDF = fileType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
-            return new NextResponse(new Uint8Array(buffer), {
-                headers: {
-                    'Content-Type': fileType,
-                    'Content-Disposition': (view && isPDF) ? `inline; filename="${fileName}"` : `attachment; filename="${fileName}"`,
-                    'Content-Length': buffer.length.toString(),
-                    ...(view && isPDF ? {'X-Content-Type-Options': 'nosniff'} : {}),
-                },
-            });
-        }
-
-        // Single document with text content
-        if (id) {
-            const {data: chunks, error} = await supabase
-                .from('documents')
-                .select('content, metadata')
-                .eq('metadata->>document_id', id)
-                .order('metadata->>chunk_index', {ascending: true});
-
-            if (error || !chunks || chunks.length === 0) {
-                return NextResponse.json({error: 'Document not found'}, {status: 404});
-            }
-
-            const m = chunks[0].metadata || {};
-            return NextResponse.json({
-                id,
-                file_name: m.file_name || 'Unknown',
-                file_type: m.file_type || 'unknown',
-                file_size: m.file_size || 0,
-                upload_date: m.upload_date || new Date().toISOString(),
-                total_chunks: chunks.length,
-                fullText: chunks.map((c: any) => c.content).join('\n\n'),
-                file_url: m.file_url,
-                file_path: m.file_path
-            });
-        }
-
-        // List all documents
-        const {data: documents, error} = await supabase.from('documents').select('metadata');
-        if (error) {
-            return NextResponse.json({error: error.message}, {status: 500});
-        }
-
-        const map = new Map();
-        documents?.forEach((doc: any) => {
-            const m = doc.metadata;
-            if (m?.document_id && !map.has(m.document_id)) {
-                map.set(m.document_id, {
-                    id: m.document_id,
-                    file_name: m.file_name || 'Unknown',
-                    file_type: m.file_type || 'unknown',
-                    file_size: m.file_size || 0,
-                    upload_date: m.upload_date || new Date().toISOString(),
-                    total_chunks: m.total_chunks || 0,
-                    file_url: m.file_url,
-                    file_path: m.file_path,
-                });
-            }
-        });
-        return NextResponse.json({documents: Array.from(map.values())});
-    } catch (error: any) {
-        return NextResponse.json({error: error.message}, {status: 500});
+      // Download file from storage
+      const { data: fileData, error } = await downloadFile(filePath);
+      if (error || !fileData) {
+        return NextResponse.json({ error: error?.message || 'File not found' }, { status: 404 });
+      }
+      const buffer = Buffer.from(await fileData.arrayBuffer());
+      const disposition = view && mime === 'application/pdf'
+        ? `inline; filename="${metadata.file_name}"`
+        : `attachment; filename="${metadata.file_name}"`;
+      return await streamFile(buffer, mime, disposition);
     }
+
+    // Single document with full text
+    if (id) {
+      const { metadata, fullText } = await getDocument(id);
+      return NextResponse.json({
+        id,
+        file_name: metadata.file_name,
+        file_type: metadata.file_type,
+        file_size: metadata.file_size,
+        upload_date: metadata.upload_date,
+        total_chunks: metadata.total_chunks,
+        fullText,
+        file_url: metadata.file_url,
+        file_path: metadata.file_path,
+      });
+    }
+
+    // List all documents (summaries)
+    const docs = await listDocuments();
+    return NextResponse.json({ documents: docs });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
 
+/** Delete a document by its ID */
 export async function DELETE(req: Request) {
-    try {
-        const id = new URL(req.url).searchParams.get('id');
-        if (!id) return NextResponse.json({error: 'Document ID required'}, {status: 400});
-        const {data: docs} = await supabase.from('documents').select('metadata').eq('metadata->>document_id', id).limit(1);
-        const filePath = docs?.[0]?.metadata?.file_path;
-        if (filePath) await supabaseStorage.storage.from('documents').remove([filePath]);
-        const {error} = await supabase.from('documents').delete().eq('metadata->>document_id', id);
-        if (error) return NextResponse.json({error: error.message}, {status: 500});
-        return NextResponse.json({success: true, fileDeleted: !!filePath});
-    } catch (error: any) {
-        return NextResponse.json({error: error.message}, {status: 500});
+  try {
+    const url = new URL(req.url);
+    let id =
+      url.searchParams.get('id') ||
+      url.searchParams.get('document_id') ||
+      null;
+
+    if (!id) {
+      try {
+        const body = await req.json();
+        if (body && typeof body.id === 'string') id = body.id;
+        else if (body && typeof body.document_id === 'string') id = body.document_id;
+      } catch {
+        // No JSON body
+      }
     }
+
+    if (!id || id === 'undefined' || id === 'null') {
+      return NextResponse.json({ error: 'Document ID required' }, { status: 400 });
+    }
+
+    // Retrieve document metadata to know the storage file path.
+    const docResult = await getDocument(id).catch(() => null);
+    if (!docResult || !docResult.metadata) {
+      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    }
+    const filePath = docResult.metadata.file_path;
+    // Delete storage file if a path exists.
+    if (filePath) {
+      await deleteFile(filePath);
+    }
+    // Delete the document record using the service (which also accepts a file‑deletion callback).
+    await deleteDocument(id, deleteFile);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
+
+

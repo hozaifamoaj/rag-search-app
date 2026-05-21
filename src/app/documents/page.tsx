@@ -4,15 +4,12 @@ import Navigation from '../components/Navigation';
 import PDFViewerModal from '../components/PDFViewerModal';
 import UploadModal from '../components/UploadModal';
 
-interface Document {
-    id: string;
-    file_name: string;
-    file_type: string;
-    file_size: number;
-    upload_date: string;
-    total_chunks: number;
-    file_url?: string;
-    file_path?: string;
+import { Document } from '@/lib/types';
+
+function getDocumentId(doc: Document): string | undefined {
+    const id = doc.id ?? doc.document_id;
+    if (!id || id === 'undefined' || id === 'null') return undefined;
+    return id;
 }
 
 export default function DocumentsPage() {
@@ -64,14 +61,24 @@ export default function DocumentsPage() {
     };
     const formatFileSize = (b: number) => b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(2)} KB` : `${(b / (1024 * 1024)).toFixed(2)} MB`;
 
-    const handleDelete = async (id: string, name: string) => {
+    const handleDelete = async (doc: Document) => {
+        const id = getDocumentId(doc);
+        if (!id) {
+            alert('Error: Document ID is missing. Refresh the page and try again.');
+            return;
+        }
+        const name = doc.file_name;
         if (!confirm(`Delete "${name}"? This will permanently delete the document, embeddings, and file.`)) return;
         setDeletingId(id);
         try {
-            const res = await fetch(`/api/documents?id=${id}`, {method: 'DELETE'});
+            const res = await fetch('/api/documents', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id }),
+            });
             const data = await res.json();
             if (data.error) alert(`Error: ${data.error}`);
-            else setDocuments(documents.filter(doc => doc.id !== id));
+            else setDocuments(documents.filter((doc) => getDocumentId(doc) !== id));
         } catch (err) {
             alert(err instanceof Error ? err.message : 'Failed to delete');
         } finally {
@@ -142,8 +149,10 @@ export default function DocumentsPage() {
                                 </thead>
                                 <tbody
                                     className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
-                                {documents.map((doc) => (
-                                    <tr key={doc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                                {documents.map((doc) => {
+                                    const docId = getDocumentId(doc);
+                                    return (
+                                    <tr key={docId ?? doc.file_path ?? doc.file_name} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
                                                 {doc.file_name}
@@ -168,8 +177,8 @@ export default function DocumentsPage() {
                                             <div className="flex gap-3 items-center">
                                                 {doc.file_name.toLowerCase().endsWith('.pdf') ? (
                                                     <button onClick={() => {
-                                                        const pdfUrl = doc.file_url ? `${doc.file_url}?view=true` : `/api/documents?id=${doc.id}&file=true&view=true`;
-                                                        setSelectedPDF({url: pdfUrl, name: doc.file_name, id: doc.id});
+                                                        const pdfUrl = doc.file_url ? `${doc.file_url}?view=true` : `/api/documents?id=${docId}&file=true&view=true`;
+                                                        setSelectedPDF({url: pdfUrl, name: doc.file_name, id: docId});
                                                         setShowPDFModal(true);
                                                     }}
                                                             className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300">Preview</button>
@@ -177,9 +186,9 @@ export default function DocumentsPage() {
                                                     <>
                                                         <button onClick={() => {
                                                             setSelectedPDF({
-                                                                url: doc.file_url || `/api/documents?id=${doc.id}&file=true`,
+                                                                url: doc.file_url || `/api/documents?id=${docId}&file=true`,
                                                                 name: doc.file_name,
-                                                                id: doc.id,
+                                                                id: docId,
                                                                 isPDF: false
                                                             });
                                                             setShowPDFModal(true);
@@ -187,22 +196,23 @@ export default function DocumentsPage() {
                                                                 className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300">View
                                                         </button>
                                                         {(doc.file_url || doc.file_path) && (
-                                                            <a href={doc.file_url || `/api/documents?id=${doc.id}&file=true`}
+                                                            <a href={doc.file_url || `/api/documents?id=${docId}&file=true`}
                                                                download={doc.file_name}
                                                                className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
                                                                target="_blank" rel="noopener noreferrer">Download</a>
                                                         )}
                                                     </>
                                                 )}
-                                                <button onClick={() => handleDelete(doc.id, doc.file_name)}
-                                                        disabled={deletingId === doc.id}
+                                                <button onClick={() => handleDelete(doc)}
+                                                        disabled={!docId || deletingId === docId}
                                                         className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                                                    {deletingId === doc.id ? 'Deleting...' : 'Delete'}
+                                                    {deletingId === docId ? 'Deleting...' : 'Delete'}
                                                 </button>
                                             </div>
                                         </td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                                 </tbody>
                             </table>
                         </div>
