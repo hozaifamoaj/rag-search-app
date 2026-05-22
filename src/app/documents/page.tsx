@@ -2,7 +2,7 @@
 import {useEffect, useState} from 'react';
 import Navigation from '../components/Navigation';
 import PDFViewerModal from '../components/PDFViewerModal';
-import UploadModal from '../components/UploadModal';
+import UploadModal, { type UploadStatus } from '../components/UploadModal';
 
 import { Document } from '@/lib/types';
 
@@ -25,6 +25,7 @@ export default function DocumentsPage() {
     } | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [showUploadModal, setShowUploadModal] = useState(false);
+    const [uploadStatus, setUploadStatus] = useState<UploadStatus>(null);
 
     useEffect(() => {
         fetchDocuments();
@@ -90,6 +91,28 @@ export default function DocumentsPage() {
         <div className="min-h-screen">
             <Navigation/>
             <main className="max-w-7xl mx-auto p-8">
+                {uploadStatus && (
+                    <div
+                        role="alert"
+                        className={`mb-6 rounded-lg border-2 px-4 py-3 ${
+                            uploadStatus.type === 'success'
+                                ? 'border-green-600 bg-green-100 text-green-900'
+                                : 'border-red-600 bg-red-100 text-red-900'
+                        }`}
+                    >
+                        <p className="font-semibold">
+                            {uploadStatus.type === 'success' ? 'Upload successful' : 'Upload failed'}
+                        </p>
+                        <p className="mt-1 text-sm">{uploadStatus.text}</p>
+                        <button
+                            type="button"
+                            onClick={() => setUploadStatus(null)}
+                            className="mt-2 text-sm font-medium underline"
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                )}
                 <div className="flex items-center justify-between mb-6">
                     <h1 className="text-3xl font-bold">Documents</h1>
                     <button
@@ -227,8 +250,12 @@ export default function DocumentsPage() {
                                     fileUrl={selectedPDF.url} fileName={selectedPDF.name} documentId={selectedPDF.id}
                                     isPDF={selectedPDF.isPDF !== false}/>
                 )}
-                <UploadModal isOpen={showUploadModal} onClose={() => setShowUploadModal(false)}
-                             onUploadSuccess={fetchDocuments}/>
+                <UploadModal
+                    isOpen={showUploadModal}
+                    onClose={() => setShowUploadModal(false)}
+                    onUploadSuccess={fetchDocuments}
+                    onStatusChange={setUploadStatus}
+                />
             </main>
         </div>
     );
