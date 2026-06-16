@@ -1,35 +1,27 @@
-// Issues a signed upload URL so the browser uploads directly to Supabase (not through Vercel).
-import { NextResponse } from 'next/server';
 import { createSignedUploadUrl } from '@/lib/repositories/storage.repository';
+import { PrepareInputSchema } from '@/lib/validators/upload';
+import { ok, fail, handleError } from '@/lib/api/response';
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const fileName = typeof body?.fileName === 'string' ? body.fileName : '';
-    if (!fileName) {
-      return NextResponse.json({ error: 'fileName is required' }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    const parsed = PrepareInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return fail('VALIDATION_ERROR', parsed.error.issues[0].message, 400);
     }
 
+    const { fileName } = parsed.data;
     const documentId = crypto.randomUUID();
     const ext = fileName.split('.').pop() || 'bin';
     const filePath = `${documentId}.${ext}`;
 
     const { data, error } = await createSignedUploadUrl(filePath);
     if (error || !data) {
-      return NextResponse.json(
-        { error: error?.message || 'Could not create signed upload URL' },
-        { status: 500 }
-      );
+      return fail('STORAGE_ERROR', error?.message || 'Could not create signed upload URL', 500);
     }
 
-    return NextResponse.json({
-      documentId,
-      filePath,
-      token: data.token,
-      signedUrl: data.signedUrl,
-    });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to prepare upload';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return ok({ documentId, filePath, token: data.token, signedUrl: data.signedUrl });
+  } catch (err) {
+    return handleError(err);
   }
 }

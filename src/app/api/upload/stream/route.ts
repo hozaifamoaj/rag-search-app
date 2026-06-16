@@ -1,4 +1,5 @@
 import processUploadedDocument from '@/lib/services/upload.service';
+import { ProcessInputSchema } from '@/lib/validators/upload';
 import { PROGRESS } from '@/lib/utils/upload-progress';
 
 export const maxDuration = 60;
@@ -10,47 +11,21 @@ function sseLine(data: object): string {
 export async function POST(req: Request) {
   const encoder = new TextEncoder();
 
-  let body: {
-    documentId?: string;
-    filePath?: string;
-    fileName?: string;
-    fileType?: string;
-    fileSize?: number;
-  };
-
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 });
-  }
-
-  const { documentId, filePath, fileName, fileType, fileSize } = body;
-
-  if (!documentId || !filePath || !fileName) {
+  const body = await req.json().catch(() => null);
+  const parsed = ProcessInputSchema.safeParse(body);
+  if (!parsed.success) {
     return new Response(
-      JSON.stringify({ error: 'documentId, filePath, and fileName are required' }),
+      JSON.stringify({ error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message } }),
       { status: 400 }
     );
   }
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (data: object) => {
-        controller.enqueue(encoder.encode(sseLine(data)));
-      };
+      const send = (data: object) => controller.enqueue(encoder.encode(sseLine(data)));
 
       try {
-        const result = await processUploadedDocument(
-          {
-            documentId,
-            filePath,
-            fileName,
-            fileType: fileType || '',
-            fileSize: typeof fileSize === 'number' ? fileSize : 0,
-          },
-          (update) => send(update)
-        );
-
+        const result = await processUploadedDocument(parsed.data, (update) => send(update));
         send({
           success: true,
           fileName: result.fileName,
@@ -58,8 +33,8 @@ export async function POST(req: Request) {
           documentId: result.documentId,
           percent: PROGRESS.PROCESS_END,
         });
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Failed to process file';
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to process file';
         send({ success: false, error: message });
       } finally {
         controller.close();
