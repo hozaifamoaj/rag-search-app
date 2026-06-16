@@ -1,6 +1,6 @@
-// src/lib/types/index.ts
 export interface DocumentMetadata {
-  id?: string;
+  /** Canonical document identifier (UUID). Legacy rows may only have document_id — resolved by the repository layer. */
+  id: string;
   document_id?: string;
   file_name: string;
   file_type: string;
@@ -11,7 +11,7 @@ export interface DocumentMetadata {
   file_path?: string;
 }
 
-export interface DocumentSummary extends DocumentMetadata {}
+export type Document = DocumentMetadata;
 
 export interface SearchResult {
   answer: string;
@@ -19,9 +19,9 @@ export interface SearchResult {
 }
 
 export interface UploadResult {
-  document: DocumentMetadata;
+  documentId: string;
+  fileName: string;
+  fileUrl: string;
   chunksInserted: number;
+  textLength: number;
 }
-
-// Re-export Document type used in UI
-export type Document = DocumentMetadata;

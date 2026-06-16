@@ -1,18 +1,19 @@
-// Browser-only Supabase client (public env vars). Use for direct storage uploads.
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
+let browserClient: SupabaseClient | null = null;
 
-if (!supabaseUrl) {
-  throw new Error('NEXT_PUBLIC_SUPABASE_URL is not set');
+/** Browser-only Supabase client (public anon key). Use for direct storage uploads from the client. */
+export function getSupabaseBrowser(): SupabaseClient {
+  if (browserClient) return browserClient;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
+
+  if (!url) throw new Error('NEXT_PUBLIC_SUPABASE_URL is not set');
+  if (!key) throw new Error('Supabase anon key is not set; provide NEXT_PUBLIC_SUPABASE_ANON_KEY');
+
+  browserClient = createClient(url, key);
+  return browserClient;
 }
-if (!supabaseAnonKey) {
-  throw new Error(
-    'Supabase anon key is not set; provide NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY'
-  );
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);

@@ -1,16 +1,18 @@
-// src/app/api/search/route.ts
-import { NextResponse } from 'next/server';
 import { search } from '@/lib/services/search.service';
+import { SearchInputSchema } from '@/lib/validators/search';
+import { ok, fail, handleError } from '@/lib/api/response';
 
 export async function POST(req: Request) {
   try {
-    const { query } = await req.json();
-    if (!query) {
-      return NextResponse.json({ error: 'Query parameter missing' }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    const parsed = SearchInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return fail('VALIDATION_ERROR', parsed.error.issues[0].message, 400);
     }
-    const result = await search(query);
-    return NextResponse.json(result);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+
+    const result = await search(parsed.data.query);
+    return ok(result);
+  } catch (err) {
+    return handleError(err);
   }
 }
